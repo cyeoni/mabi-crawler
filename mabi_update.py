@@ -3,6 +3,9 @@ import json
 import time
 import gspread
 import undetected_chromedriver as uc
+import functools
+print = functools.partial(print, flush=True)
+
 from oauth2client.service_account import ServiceAccountCredentials
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -35,7 +38,7 @@ def crawl_character_info(driver, wait, char_name):
             modal_close_btn.click()
             time.sleep(1.5)
     except:
-        pass  # 모달이 없을 수도 있음
+        pass
 
     try:
         search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
@@ -91,7 +94,6 @@ def crawl_character_info(driver, wait, char_name):
 
 def main():
     print("=== 스크립트 시작 ===")
-    # Google 인증
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds_dict = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
@@ -122,7 +124,7 @@ def main():
         options = uc.ChromeOptions()
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--headless")  # 우회 가능한 headless
+        options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
         driver = uc.Chrome(options=options)
         wait = WebDriverWait(driver, 10)
