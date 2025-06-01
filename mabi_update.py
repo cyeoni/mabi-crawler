@@ -2,11 +2,15 @@ import functools
 import traceback
 import shutil
 import subprocess
-import undetected_chromedriver as uc
+from flask import Flask, request, jsonify
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
-import crawler  # crawler.py 임포트
+import crawler  # crawler.py 모듈
 
 print = functools.partial(print, flush=True)
+app = Flask(__name__)
 
 def find_chrome_binary():
     candidates = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome"]
@@ -37,17 +41,17 @@ def launch_chrome():
         print("크롬 실행 파일을 찾지 못해 종료합니다.")
         return None, None
 
-    opts = uc.ChromeOptions()
+    opts = Options()
     opts.binary_location = binary_path
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1920,1080")
-    opts.add_argument("--remote-debugging-port=9222")
-    # opts.add_argument("--headless=new")
+    opts.add_argument("--headless=new")  # 꼭 필요
 
     try:
-        driver = uc.Chrome(options=opts)
+        service = Service("/usr/bin/chromedriver")  # Docker 기준 경로
+        driver = webdriver.Chrome(service=service, options=opts)
         wait = WebDriverWait(driver, 10)
         print("✅ Chrome 실행 성공")
         return driver, wait
@@ -56,17 +60,30 @@ def launch_chrome():
         traceback.print_exc()
         return None, None
 
-def main():
+@app.route("/update-power")
+def update_power():
+    print("API 호출 도착 /update-power")
+    if request.args.get("key") != "mabi123":
+        return jsonify({"error": "Invalid key"}), 403
+
     check_chrome_version()
+
     driver, wait = launch_chrome()
     if not driver:
-        print("chrome launch failed")
-        return
+        return jsonify({"status": "failed", "reason": "chrome launch failed"}), 500
 
     try:
         crawler.main(driver, wait)
-    except Exception as e:
-        print("crawler error:", e)
+    except Exception:
         traceback.print_exc()
-    finally:
         driver.quit()
+        return jsonify({"status": "failed", "reason": "crawler error"}), 500
+
+    driver.quit()
+
+    return jsonify({"status": "success"})
+
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
