@@ -11,7 +11,7 @@ import undetected_chromedriver as uc
 
 def create_driver():
     options = uc.ChromeOptions()
-    # headless 모드 필요 시 활성화 (캡챠 회피 위해선 비활성 권장)
+    # headless 모드 필요 시 활성화 (캡챠 회피를 위해선 비활성 권장)
     # options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
