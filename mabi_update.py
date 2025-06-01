@@ -4,6 +4,8 @@ import time
 import gspread
 import undetected_chromedriver as uc
 import functools
+import subprocess
+
 print = functools.partial(print, flush=True)
 
 from oauth2client.service_account import ServiceAccountCredentials
@@ -13,6 +15,21 @@ from selenium.webdriver.support import expected_conditions as EC
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+
+# 크롬 버전 체크 함수
+def check_chrome_version():
+    try:
+        # 환경에 따라 chromium-browser, google-chrome, chrome 등 다를 수 있음
+        for cmd in ["chromium-browser", "google-chrome", "chrome", "chromedriver"]:
+            try:
+                version = subprocess.check_output([cmd, "--version"]).decode().strip()
+                print(f"브라우저 버전 확인: {version} ({cmd})")
+                return
+            except Exception:
+                continue
+        print("브라우저 버전 확인 실패: 사용 가능한 명령어 없음")
+    except Exception as e:
+        print(f"브라우저 버전 확인 중 에러: {e}")
 
 # ---------------------------------------------------------------------------
 # 유틸: 페이지 열기 (재시도 + 간단한 HTML 덤프)
@@ -104,6 +121,8 @@ def crawl_character_info(driver, wait, char_name):
 # ---------------------------------------------------------------------------
 def main():
     print("=== 스크립트 시작 ===")
+    check_chrome_version()  # 크롬 버전 출력
+
     # 1) 구글 시트 인증
     try:
         scope = [
