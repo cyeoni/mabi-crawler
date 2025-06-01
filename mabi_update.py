@@ -18,17 +18,22 @@ app = Flask(__name__)
 
 # 크롬 버전 체크 함수
 def check_chrome_version():
-    try:
-        for cmd in ["chromium-browser", "google-chrome", "google-chrome-stable", "chromium", "chrome", "chromedriver"]:
-            try:
-                version = subprocess.check_output([cmd, "--version"]).decode().strip()
-                print(f"브라우저 버전 확인: {version} ({cmd})")
-                return
-            except Exception:
-                print(f"{cmd} 명령어를 실행할 수 없습니다.")
-        print("브라우저 버전 확인 실패: 사용 가능한 명령어 없음")
-    except Exception as e:
-        print(f"브라우저 버전 확인 중 에러: {e}")
+    cmds = [
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chrome",
+        "chromedriver",
+    ]
+    for cmd in cmds:
+        try:
+            version = subprocess.check_output([cmd, "--version"]).decode().strip()
+            print(f"브라우저 버전 확인: {version} ({cmd})")
+            return
+        except Exception:
+            print(f"{cmd} 명령어를 실행할 수 없습니다.")
+    print("브라우저 버전 확인 실패: 사용 가능한 명령어 없음")
 
 # ---------------------------------------------------------------------------
 # 유틸: 페이지 열기 (재시도 + 간단한 HTML 덤프)
@@ -39,6 +44,7 @@ def open_page_with_retry(driver, url, wait, retries=3):
             print(f"[{attempt}/{retries}] 페이지 열기 시도: {url}")
             driver.get(url)
 
+            # 페이지 상단 ‘서버 선택’ 드롭다운이 보일 때까지 대기
             wait.until(
                 EC.presence_of_element_located(
                     (By.CSS_SELECTOR, ".select_server .select_box")
@@ -61,6 +67,7 @@ def open_page_with_retry(driver, url, wait, retries=3):
 # ---------------------------------------------------------------------------
 def crawl_character_info(driver, wait, char_name):
     print(f"  • {char_name} 크롤링 시작")
+    # 모달 팝업(공지) 닫기
     try:
         modal = driver.find_element(By.CSS_SELECTOR, "body > div.modal.alert_modal")
         if modal.is_displayed():
@@ -69,7 +76,7 @@ def crawl_character_info(driver, wait, char_name):
             ).click()
             time.sleep(1)
     except Exception:
-        pass
+        pass  # 모달이 없으면 무시
 
     try:
         search_input = wait.until(
@@ -117,9 +124,9 @@ def crawl_character_info(driver, wait, char_name):
 # ---------------------------------------------------------------------------
 def main():
     print("=== 스크립트 시작 ===")
-    check_chrome_version()
+    check_chrome_version()  # 크롬 버전 출력
 
-    # 구글 시트 인증
+    # 1) 구글 시트 인증
     try:
         scope = [
             "https://spreadsheets.google.com/feeds",
@@ -140,7 +147,7 @@ def main():
         print(f"❌ 구글 시트 연결 실패: {e}")
         return False
 
-    # 캐릭터명 수집
+    # 2) 캐릭터명 수집
     try:
         names = list(dict.fromkeys(n.strip() for n in worksheet.col_values(2)[1:] if n.strip()))
         print(f"✅ 캐릭터 {len(names)}명 수집")
@@ -148,13 +155,16 @@ def main():
         print(f"❌ 캐릭터명 수집 실패: {e}")
         return False
 
-    # 브라우저 실행 (headful: 차단 회피)
+    # 3) 브라우저 실행 (headful: 차단 회피)
     try:
         opts = uc.ChromeOptions()
-        opts.binary_location = "/usr/bin/chromium"  # 여기 중요!
+        opts.binary_location = "/usr/bin/chromium"  # 환경에 맞게 조정 필요
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
         opts.add_argument("--window-size=1920,1080")
+        opts.add_argument("--remote-debugging-port=9222")
+        # opts.add_argument("--headless=new")  # 필요시 주석 해제
+
         driver = uc.Chrome(options=opts)
         wait = WebDriverWait(driver, 10)
         print("✅ Chrome 실행")
@@ -162,13 +172,13 @@ def main():
         print(f"❌ Chrome 실행 실패: {e}")
         return False
 
-    # 랭킹 페이지 열기
+    # 4) 랭킹 페이지 열기
     url = "https://mabinogimobile.nexon.com/Ranking/List?t=1"
     if not open_page_with_retry(driver, url, wait):
         driver.quit()
         return False
 
-    # 서버(알리사) 선택
+    # 5) 서버(알리사) 선택
     try:
         print("서버 선택 중...")
         wait.until(EC.element_to_be_clickable(
@@ -185,7 +195,7 @@ def main():
         driver.quit()
         return False
 
-    # 캐릭터별 크롤링
+    # 6) 캐릭터별 크롤링
     results = []
     for name in names:
         info = crawl_character_info(driver, wait, name)
@@ -198,7 +208,7 @@ def main():
         print("🚫 결과 없음")
         return False
 
-    # 결과 정렬 및 시트 업데이트
+    # 7) 결과 정렬 및 시트 업데이트
     results.sort(key=lambda x: x[3], reverse=True)
     rows = [["랭킹", "캐릭터명", "직업", "전투력"]] + [
         [i + 1, n, j, p] for i, (n, j, p, _) in enumerate(results)
