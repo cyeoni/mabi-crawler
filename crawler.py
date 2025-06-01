@@ -11,13 +11,17 @@ import undetected_chromedriver as uc
 
 def create_driver():
     options = uc.ChromeOptions()
-    headless = os.getenv("HEADLESS", "false").lower() == "true"
-    if headless:
-        options.add_argument("--headless=new")  # 필요 시 headless 모드 활성화
+    # 필요시 헤드리스 모드 활성화
+    # options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-setuid-sandbox")
+    options.add_argument("--single-process")
     options.add_argument("window-size=1920,1080")
+
+    options.binary_location = os.getenv("CHROME_PATH", "/usr/bin/google-chrome")
 
     user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -25,12 +29,7 @@ def create_driver():
     )
     options.add_argument(f"user-agent={user_agent}")
 
-    try:
-        driver = uc.Chrome(options=options)
-    except Exception as e:
-        print(f"❌ 드라이버 생성 실패: {e}")
-        raise
-
+    driver = uc.Chrome(options=options, driver_executable_path="/usr/local/bin/chromedriver")
     wait = WebDriverWait(driver, 20)
     return driver, wait
 
@@ -46,7 +45,7 @@ def open_page_with_retry(driver, url, wait, retries=3):
             print("✅ 페이지 열림")
             return True
         except Exception as e:
-            print(f"❌ 페이지 로딩 실패, 재시도 {attempt}/{retries}: {type(e).__name__}: {e}")
+            print(f"❌ 페이지 로딩 실패, 재시도 {attempt}/{retries}: {e}")
 
             html = driver.page_source.lower()
             print("🔎 현재 페이지 일부 내용 (앞 500자):\n", html[:500])
@@ -71,9 +70,11 @@ def crawl_character_info(driver, wait, char_name):
             print("모달 팝업 발견 → 닫기 클릭")
             close_btn.click()
             time.sleep(1.5)
-    except Exception as e:
-        print(f"[crawl_character_info] 모달 팝업 처리 중 예외: {e}")
+    except Exception:
+        # 모달 없으면 무시
+        pass
 
+    # 검색창에 이름 입력 후 검색
     search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
     search_input.clear()
     search_input.send_keys(char_name)
@@ -106,31 +107,28 @@ def crawl_character_info(driver, wait, char_name):
 
 def main(driver, wait):
     print("크롤러 시작")
+
+    # 구글 API 범위 설정
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
+    # 환경변수에서 인증 JSON 문자열 불러오기
     creds_json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     if not creds_json_str:
         raise RuntimeError("환경 변수 GOOGLE_APPLICATION_CREDENTIALS_JSON 가 설정되어 있지 않습니다.")
 
-    try:
-        creds_dict = json.loads(creds_json_str)
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        print("구글 시트 인증 완료")
-    except Exception as e:
-        print(f"❌ 구글 시트 인증 실패: {e}")
-        return
+    creds_dict = json.loads(creds_json_str)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    print("구글 시트 인증 완료")
 
-    try:
-        sheet = client.open_by_url(
-            "https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752"
-        )
-        worksheet = sheet.worksheet("전투력")
-    except Exception as e:
-        print(f"❌ 구글 시트 열기 실패: {e}")
-        return
+    sheet = client.open_by_url(
+        "https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752"
+    )
+    worksheet = sheet.worksheet("전투력")
 
+    # 2열(캐릭터명) 전체 가져오기 (헤더 제외)
     char_names = worksheet.col_values(2)[1:]
+    # 중복 제거 및 공백 제거
     char_names = list(dict.fromkeys(name.strip() for name in char_names if name.strip()))
     print(f"캐릭터 이름 총 {len(char_names)}개 읽음")
 
@@ -139,6 +137,7 @@ def main(driver, wait):
         print("페이지 열기 실패로 크롤러 종료")
         return
 
+    # 서버 선택 (알리사 서버 - 서버ID: 4)
     try:
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_box"))).click()
         time.sleep(0.5)
@@ -159,6 +158,7 @@ def main(driver, wait):
         print(f"✅ {char_name} 조회 완료: 직업={job}, 전투력={power}")
         results.append((char_name, job, power, power_int))
 
+    # 전투력 순 내림차순 정렬
     results.sort(key=lambda x: x[3], reverse=True)
 
     data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
@@ -168,6 +168,7 @@ def main(driver, wait):
     print("구글 시트 업데이트 시작")
     worksheet.update(f'A1:D{len(data_to_update)}', data_to_update)
 
+    # 기존 데이터 중 남는 행 초기화
     all_rows = len(worksheet.get_all_values())
     leftover = all_rows - len(data_to_update)
     if leftover > 0:
@@ -179,17 +180,8 @@ def main(driver, wait):
 
 
 if __name__ == "__main__":
-    try:
-        driver, wait = create_driver()
-    except Exception as e:
-        print("[main] 드라이버 생성 실패, 프로그램 종료")
-        exit(1)
-
+    driver, wait = create_driver()
     try:
         main(driver, wait)
-    except Exception as e:
-        print(f"[main] 크롤러 실행 중 예외 발생: {e}")
     finally:
-        print("[update_power_data] 드라이버 종료 전")
         driver.quit()
-        print("[update_power_data] 드라이버 종료 완료")
