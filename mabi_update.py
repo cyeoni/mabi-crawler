@@ -14,190 +14,210 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+# ---------------------------------------------------------------------------
+# 유틸: 페이지 열기 (재시도 + 간단한 HTML 덤프)
+# ---------------------------------------------------------------------------
 def open_page_with_retry(driver, url, wait, retries=3):
-    for attempt in range(retries):
+    for attempt in range(1, retries + 1):
         try:
-            print(f"페이지 열기 시도 {attempt+1}회: {url}")
+            print(f"[{attempt}/{retries}] 페이지 열기 시도: {url}")
             driver.get(url)
-            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#mabinogim > div.ranking.container")))
-            print("사이트 열림")
+
+            # 페이지 상단 ‘서버 선택’ 드롭다운이 보일 때까지 대기
+            wait.until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, ".select_server .select_box")
+                )
+            )
+            print("✅ 페이지 열림")
             return True
         except Exception as e:
-            print(f"페이지 로딩 실패, 재시도 {attempt+1}/{retries} 중... 에러: {e}")
+            print(f"❌ 로딩 실패({attempt}): {e}")
+            # 처음 1 KB HTML을 덤프해 디버깅
+            print("----- page source (truncated) -----")
+            print(driver.page_source[:1024])
+            print("-----------------------------------")
             time.sleep(2)
-    print("페이지 열기에 실패했습니다.")
+
+    print("🚫 페이지 열기에 최종 실패")
     return False
 
+# ---------------------------------------------------------------------------
+# 캐릭터 1명 크롤링
+# ---------------------------------------------------------------------------
 def crawl_character_info(driver, wait, char_name):
-    print(f"  - {char_name} 크롤링 시작")
+    print(f"  • {char_name} 크롤링 시작")
+    # 모달 팝업(공지) 닫기
     try:
         modal = driver.find_element(By.CSS_SELECTOR, "body > div.modal.alert_modal")
         if modal.is_displayed():
-            modal_close_btn = modal.find_element(By.CSS_SELECTOR, "div.button_area > button")
-            print("  모달 팝업 발견! 닫기 클릭합니다.")
-            modal_close_btn.click()
-            time.sleep(1.5)
-    except:
-        pass
+            modal.find_element(
+                By.CSS_SELECTOR, "div.button_area > button"
+            ).click()
+            time.sleep(1)
+    except Exception:
+        pass  # 모달이 없으면 무시
 
     try:
-        search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
+        search_input = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']"))
+        )
         search_input.clear()
         search_input.send_keys(char_name)
+        driver.find_element(
+            By.CSS_SELECTOR, "button[data-searchtype='search']"
+        ).click()
+        time.sleep(2)
     except Exception as e:
-        print(f"  검색 입력창 처리 중 에러: {e}")
-        return None, None, None
+        print(f"    검색 단계 에러: {e}")
+        return None
 
     try:
-        search_button = driver.find_element(By.CSS_SELECTOR, "button[data-searchtype='search']")
-        search_button.click()
-        time.sleep(3)
-    except Exception as e:
-        print(f"  검색 버튼 클릭 중 에러: {e}")
-        return None, None, None
+        wait.until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
+            )
+        )
+        items = driver.find_elements(
+            By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li"
+        )
+    except Exception:
+        print("    검색 결과 로딩 실패")
+        return None
 
-    try:
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")))
-        items = driver.find_elements(By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
-    except:
-        print(f"  {char_name} 검색 결과 없음 또는 로딩 실패")
-        return None, None, None
-
-    target_char = None
     for item in items:
         try:
-            name_elem = item.find_element(By.CSS_SELECTOR, "div:nth-child(3)")
-            if name_elem.text.strip() == char_name:
-                target_char = item
-                break
-        except:
+            if item.find_element(By.CSS_SELECTOR, "div:nth-child(3)").text.strip() == char_name:
+                job = item.find_element(By.CSS_SELECTOR, "div:nth-child(4)").text.strip()
+                power_text = item.find_element(By.CSS_SELECTOR, "div:nth-child(5)").text.strip()
+                power_val = int(power_text.replace(",", ""))
+                print(f"    완료: 직업={job}, 전투력={power_text}")
+                return (char_name, job, power_text, power_val)
+        except Exception:
             continue
 
-    if not target_char:
-        print(f"  {char_name} 캐릭터를 찾을 수 없습니다.")
-        return None, None, None
+    print("    대상 캐릭터 미발견")
+    return None
 
-    try:
-        job = target_char.find_element(By.CSS_SELECTOR, "div:nth-child(4)").text.strip()
-    except:
-        job = "(정보 없음)"
-
-    try:
-        power = target_char.find_element(By.CSS_SELECTOR, "div:nth-child(5)").text.strip()
-        power_int = int(power.replace(',', ''))
-    except:
-        power = "0"
-        power_int = 0
-
-    print(f"  {char_name} 크롤링 완료: 직업={job}, 전투력={power}")
-    return job, power, power_int
-
+# ---------------------------------------------------------------------------
+# 메인 로직
+# ---------------------------------------------------------------------------
 def main():
     print("=== 스크립트 시작 ===")
+    # 1) 구글 시트 인증
     try:
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds_dict = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        print("Google 인증 완료")
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(
+            json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"]), scope
+        )
+        worksheet = (
+            gspread.authorize(creds)
+            .open_by_url(
+                "https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752"
+            )
+            .worksheet("전투력")
+        )
+        print("✅ 구글 시트 연결 성공")
     except Exception as e:
-        print(f"Google 인증 중 에러: {e}")
+        print(f"❌ 구글 시트 연결 실패: {e}")
         return False
 
+    # 2) 캐릭터명 수집
     try:
-        sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752")
-        worksheet = sheet.worksheet("전투력")
-        print("구글 시트 열기 완료")
+        names = list(dict.fromkeys(n.strip() for n in worksheet.col_values(2)[1:] if n.strip()))
+        print(f"✅ 캐릭터 {len(names)}명 수집")
     except Exception as e:
-        print(f"구글 시트 열기 중 에러: {e}")
+        print(f"❌ 캐릭터명 수집 실패: {e}")
         return False
 
+    # 3) 브라우저 실행 (headful: 차단 회피)
     try:
-        char_names = worksheet.col_values(2)[1:]
-        char_names = list(dict.fromkeys([name.strip() for name in char_names if name.strip()]))
-        print(f"캐릭터명 수집 완료: 총 {len(char_names)}개 캐릭터")
-    except Exception as e:
-        print(f"캐릭터명 수집 중 에러: {e}")
-        return False
-
-    try:
-        options = uc.ChromeOptions()
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--headless")
-        options.add_argument("--window-size=1920,1080")
-        driver = uc.Chrome(options=options)
+        opts = uc.ChromeOptions()
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--window-size=1920,1080")
+        # headless 모드는 비활성화
+        driver = uc.Chrome(options=opts)
         wait = WebDriverWait(driver, 10)
-        print("브라우저 실행 완료")
+        print("✅ Chrome 실행")
     except Exception as e:
-        print(f"브라우저 실행 중 에러: {e}")
+        print(f"❌ Chrome 실행 실패: {e}")
         return False
 
+    # 4) 랭킹 페이지 열기
     url = "https://mabinogimobile.nexon.com/Ranking/List?t=1"
     if not open_page_with_retry(driver, url, wait):
         driver.quit()
         return False
 
+    # 5) 서버(알리사) 선택
     try:
         print("서버 선택 중...")
-        server_select_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_box")))
-        server_select_box.click()
-        time.sleep(0.5)
-        alisa_option = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_option li[data-serverid='4']")))
-        alisa_option.click()
-        print("알리사 서버 선택 완료")
-        time.sleep(2)
+        wait.until(EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, ".select_server .select_box")
+        )).click()
+        time.sleep(0.3)
+        wait.until(EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, ".select_server .select_option li[data-serverid='4']")
+        )).click()
+        print("✅ 알리사 서버 선택")
+        time.sleep(1)
     except Exception as e:
-        print(f"서버 선택 중 에러: {e}")
+        print(f"❌ 서버 선택 실패: {e}")
         driver.quit()
         return False
 
+    # 6) 캐릭터별 크롤링
     results = []
-    for char_name in char_names:
-        job, power, power_int = crawl_character_info(driver, wait, char_name)
-        if job is None or power is None:
-            continue
-        results.append((char_name, job, power, power_int))
+    for name in names:
+        info = crawl_character_info(driver, wait, name)
+        if info:
+            results.append(info)
 
     driver.quit()
 
+    if not results:
+        print("🚫 결과 없음")
+        return False
+
+    # 7) 결과 정렬 및 시트 업데이트
+    results.sort(key=lambda x: x[3], reverse=True)
+    rows = [["랭킹", "캐릭터명", "직업", "전투력"]] + [
+        [i + 1, n, j, p] for i, (n, j, p, _) in enumerate(results)
+    ]
     try:
-        results.sort(key=lambda x: x[3], reverse=True)
-    except:
-        pass
-
-    try:
-        data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
-        for i, (name, job, power, _) in enumerate(results, start=1):
-            data_to_update.append([i, name, job, power])
-
-        worksheet.update(f"A1:D{len(data_to_update)}", data_to_update)
-
-        all_rows = len(worksheet.get_all_values())
-        if all_rows > len(data_to_update):
-            clear_range = f"A{len(data_to_update)+1}:D{all_rows}"
-            worksheet.update(clear_range, [[""]*4] * (all_rows - len(data_to_update)))
-
-        print("시트 업데이트 완료")
+        worksheet.update(f"A1:D{len(rows)}", rows)
+        # 남은 행 클리어
+        extra = len(worksheet.get_all_values()) - len(rows)
+        if extra > 0:
+            worksheet.update(f"A{len(rows)+1}:D{len(rows)+extra}", [[""] * 4] * extra)
+        print("✅ 시트 업데이트 완료")
     except Exception as e:
-        print(f"시트 업데이트 중 에러: {e}")
+        print(f"❌ 시트 업데이트 실패: {e}")
+        return False
 
     print("=== 스크립트 종료 ===")
     return True
 
-@app.route('/update-power')
+# ---------------------------------------------------------------------------
+# Flask 엔드포인트
+# ---------------------------------------------------------------------------
+@app.route("/update-power")
 def update_power():
-    print("API 요청 도착 - /update-power")
-    key = request.args.get('key')
-    if key != "mabi123":
+    print("API 호출 도착 /update-power")
+    if request.args.get("key") != "mabi123":
         return jsonify({"error": "Invalid key"}), 403
 
-    success = main()
-    if success:
-        return jsonify({"status": "success"})
-    else:
-        return jsonify({"status": "failed"}), 500
+    return (
+        jsonify({"status": "success"})
+        if main()
+        else (jsonify({"status": "failed"}), 500)
+    )
 
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, threaded=False)
