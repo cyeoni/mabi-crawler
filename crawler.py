@@ -3,9 +3,27 @@ import json
 import time
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+def create_driver():
+    options = Options()
+    options.add_argument("--headless=new")  # 최신 헤드리스 모드
+    options.add_argument("--no-sandbox")  # 리눅스 서버 권한 문제 방지
+    options.add_argument("--disable-dev-shm-usage")  # 공유 메모리 문제 방지
+    options.add_argument("window-size=1920,1080")  # 창 크기 고정
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
+
+    # 크롬드라이버 경로가 다르면 Service("/path/to/chromedriver")처럼 지정하세요
+    service = Service()
+    driver = webdriver.Chrome(service=service, options=options)
+    wait = WebDriverWait(driver, 20)  # 최대 20초 대기
+    return driver, wait
 
 def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
@@ -123,3 +141,10 @@ def main(driver, wait):
 
     print("✅ 구글 시트 업데이트 완료")
     print("크롤러 종료")
+
+if __name__ == "__main__":
+    driver, wait = create_driver()
+    try:
+        main(driver, wait)
+    finally:
+        driver.quit()
