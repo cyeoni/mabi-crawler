@@ -12,22 +12,24 @@ import time
 def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
         try:
+            print(f"페이지 열기 시도 {attempt+1}회: {url}")
             driver.get(url)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#mabinogim > div.ranking.container")))
             print("사이트 열림")
             return True
         except Exception as e:
-            print(f"페이지 로딩 실패, 재시도 {attempt+1}/{retries} 중...")
+            print(f"페이지 로딩 실패, 재시도 {attempt+1}/{retries} 중... 에러: {e}")
             time.sleep(2)
     print("페이지 열기에 실패했습니다.")
     return False
 
 def crawl_character_info(driver, wait, char_name):
+    print(f"  - {char_name} 크롤링 시작")
     try:
         modal = driver.find_element(By.CSS_SELECTOR, "body > div.modal.alert_modal")
         if modal.is_displayed():
             modal_close_btn = modal.find_element(By.CSS_SELECTOR, "div.button_area > button")
-            print("모달 팝업 발견! 닫기 클릭합니다.")
+            print("  모달 팝업 발견! 닫기 클릭합니다.")
             modal_close_btn.click()
             time.sleep(1.5)
     except Exception as e:
@@ -43,7 +45,7 @@ def crawl_character_info(driver, wait, char_name):
     try:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")))
     except:
-        print(f"{char_name} 검색 결과 없음")
+        print(f"  {char_name} 검색 결과 없음")
         return None, None, None
 
     items = driver.find_elements(By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
@@ -59,7 +61,7 @@ def crawl_character_info(driver, wait, char_name):
             continue
 
     if not target_char:
-        print(f"{char_name} 캐릭터를 찾을 수 없습니다.")
+        print(f"  {char_name} 캐릭터를 찾을 수 없습니다.")
         return None, None, None
 
     try:
@@ -73,19 +75,23 @@ def crawl_character_info(driver, wait, char_name):
         power = "0"
         power_int = 0
 
+    print(f"  {char_name} 크롤링 완료: 직업={job}, 전투력={power}")
     return job, power, power_int
 
 def main():
+    print("=== 스크립트 시작 ===")
     # ✅ Google 인증 - 환경변수에서 JSON 문자열 가져오기
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     json_creds = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
     creds_dict = json.loads(json_creds)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
+    print("Google 인증 완료")
 
     # 문서 열기
     sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752")
     worksheet = sheet.worksheet("전투력")
+    print("구글 시트 열기 완료")
 
     # B열 캐릭터명 수집
     char_names = worksheet.col_values(2)[1:]
@@ -97,6 +103,7 @@ def main():
             unique_char_names.append(name)
             seen.add(name)
     char_names = unique_char_names
+    print(f"캐릭터명 수집 완료: 총 {len(char_names)}개 캐릭터")
 
     options = Options()
     options.add_argument("--headless")
@@ -104,15 +111,17 @@ def main():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     driver = webdriver.Chrome(options=options)
-
     wait = WebDriverWait(driver, 10)  # 이 부분 추가!
+    print("웹 드라이버 실행 완료")
 
     url = "https://mabinogimobile.nexon.com/Ranking/List?t=1"
     if not open_page_with_retry(driver, url, wait):
         driver.quit()
+        print("브라우저 종료")
         return
 
     # 알리사 서버 선택
+    print("알리사 서버 선택 중...")
     server_select_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_box")))
     server_select_box.click()
     time.sleep(0.5)
@@ -123,7 +132,6 @@ def main():
 
     results = []
     for char_name in char_names:
-        print(f"{char_name} 정보 크롤링 시작...")
         job, power, power_int = crawl_character_info(driver, wait, char_name)
         if job is None or power is None:
             print(f"{char_name} 정보 없음, 건너뜀")
@@ -131,13 +139,16 @@ def main():
         results.append((char_name, job, power, power_int))
 
     driver.quit()
+    print("브라우저 종료 완료")
 
     results.sort(key=lambda x: x[3], reverse=True)
+    print("결과 정렬 완료")
 
     data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
     for i, (name, job, power, _) in enumerate(results, start=1):
         data_to_update.append([i, name, job, power])
 
+    print(f"구글 시트 업데이트 시작 (총 {len(data_to_update)-1}개 데이터)")
     worksheet.update('A1:D{}'.format(len(data_to_update)), data_to_update)
 
     all_rows = len(worksheet.get_all_values())
@@ -148,8 +159,10 @@ def main():
         clear_range = f"A{start_row}:D{end_row}"
         empty_data = [[""] * 4] * rows_to_clear
         worksheet.update(clear_range, empty_data)
+        print(f"잔여 데이터 {rows_to_clear}줄 삭제 완료")
 
     print("구글 시트 업데이트 및 잔여 데이터 삭제 완료!")
+    print("=== 스크립트 종료 ===")
 
 if __name__ == "__main__":
     main()
