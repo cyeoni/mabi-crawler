@@ -31,6 +31,19 @@ def check_chrome_version():
     except Exception as e:
         print(f"브라우저 버전 확인 중 에러: {e}")
 
+# 크롬 버전 체크 함수
+def check_chrome_version():
+    try:
+        cmds = ["chromium-browser", "google-chrome"]
+        for cmd in cmds:
+            try:
+                version = subprocess.check_output([cmd, "--version"]).decode().strip()
+                print(f"브라우저 버전 확인: {version} ({cmd})")
+            except Exception:
+                print(f"{cmd} 명령어를 실행할 수 없습니다.")
+    except Exception as e:
+        print(f"브라우저 버전 확인 중 에러: {e}")
+
 # ---------------------------------------------------------------------------
 # 유틸: 페이지 열기 (재시도 + 간단한 HTML 덤프)
 # ---------------------------------------------------------------------------
