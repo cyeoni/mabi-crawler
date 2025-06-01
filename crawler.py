@@ -1,9 +1,11 @@
-from oauth2client.service_account import ServiceAccountCredentials
+import os
+import json
+import time
 import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import time
 
 def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
@@ -62,7 +64,13 @@ def crawl_character_info(driver, wait, char_name):
 def main(driver, wait):
     print("크롤러 시작")
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name('mabiguildsheetbot-64542e93dafc.json', scope)
+
+    creds_json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if not creds_json_str:
+        raise RuntimeError("환경 변수 GOOGLE_APPLICATION_CREDENTIALS_JSON 가 설정되어 있지 않습니다.")
+
+    creds_dict = json.loads(creds_json_str)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     print("구글 시트 인증 완료")
 
@@ -99,6 +107,7 @@ def main(driver, wait):
         results.append((char_name, job, power, power_int))
 
     results.sort(key=lambda x: x[3], reverse=True)
+
     data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
     for i, (name, job, power, _) in enumerate(results, start=1):
         data_to_update.append([i, name, job, power])
