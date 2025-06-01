@@ -4,7 +4,7 @@ import time
 import sys
 import traceback
 
-import crawler.py  # 크롤러 코드가 있는 파일 이름을 여기로 바꾸세요 (예: crawler.py)
+import crawler  # 크롤러 코드가 있는 파일 이름을 여기로 바꾸세요 (예: crawler.py)
 
 app = Flask(__name__)
 
