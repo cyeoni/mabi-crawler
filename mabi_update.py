@@ -8,6 +8,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
 
 def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
@@ -96,7 +99,7 @@ def crawl_character_info(driver, wait, char_name):
 
 def main():
     print("=== 스크립트 시작 ===")
-    # ✅ Google 인증 - 환경변수에서 JSON 문자열 가져오기
+    # Google 인증 - 환경변수에서 JSON 문자열 가져오기
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         json_creds = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
@@ -106,7 +109,7 @@ def main():
         print("Google 인증 완료")
     except Exception as e:
         print(f"Google 인증 중 에러 발생: {e}")
-        return
+        return False
 
     try:
         # 문서 열기
@@ -115,7 +118,7 @@ def main():
         print("구글 시트 열기 완료")
     except Exception as e:
         print(f"구글 시트 열기 중 에러 발생: {e}")
-        return
+        return False
 
     try:
         # B열 캐릭터명 수집
@@ -131,11 +134,11 @@ def main():
         print(f"캐릭터명 수집 완료: 총 {len(char_names)}개 캐릭터")
     except Exception as e:
         print(f"캐릭터명 수집 중 에러 발생: {e}")
-        return
+        return False
 
     try:
         options = Options()
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
@@ -144,13 +147,13 @@ def main():
         print("웹 드라이버 실행 완료")
     except Exception as e:
         print(f"웹 드라이버 실행 중 에러 발생: {e}")
-        return
+        return False
 
     url = "https://mabinogimobile.nexon.com/Ranking/List?t=1"
     if not open_page_with_retry(driver, url, wait):
         driver.quit()
         print("브라우저 종료")
-        return
+        return False
 
     try:
         # 알리사 서버 선택
@@ -165,7 +168,7 @@ def main():
     except Exception as e:
         print(f"서버 선택 중 에러 발생: {e}")
         driver.quit()
-        return
+        return False
 
     results = []
     for char_name in char_names:
@@ -207,6 +210,24 @@ def main():
         print(f"구글 시트 업데이트 중 에러 발생: {e}")
 
     print("=== 스크립트 종료 ===")
+    return True
+
+@app.route('/update-power')
+def update_power():
+    print("API 요청 도착 - /update-power")
+    key = request.args.get('key')
+    if key != "mabi123":
+        print("잘못된 키:", key)
+        return jsonify({"error": "Invalid key"}), 403
+
+    success = main()
+    if success:
+        return jsonify({"status": "success"})
+    else:
+        return jsonify({"status": "failed"}), 500
 
 if __name__ == "__main__":
-    main()
+    # Railway 같은 환경에서는 0.0.0.0:포트로 서버 띄워야 함
+    port = int(os.environ.get("PORT", 8080))
+    print(f"서버 시작, 포트 {port}")
+    app.run(host="0.0.0.0", port=port)
