@@ -60,28 +60,30 @@ def launch_chrome():
         traceback.print_exc()
         return None, None
 
+def update_power_data():
+    """크롤링 실행 함수: server.py에서 import해 직접 호출 가능"""
+    check_chrome_version()
+    driver, wait = launch_chrome()
+    if not driver:
+        raise RuntimeError("chrome launch failed")
+
+    try:
+        crawler.main(driver, wait)
+    finally:
+        driver.quit()
+
 @app.route("/update-power")
 def update_power():
     print("API 호출 도착 /update-power")
     if request.args.get("key") != "mabi123":
         return jsonify({"error": "Invalid key"}), 403
 
-    check_chrome_version()
-
-    driver, wait = launch_chrome()
-    if not driver:
-        return jsonify({"status": "failed", "reason": "chrome launch failed"}), 500
-
     try:
-        crawler.main(driver, wait)
+        update_power_data()
+        return jsonify({"status": "success"})
     except Exception:
         traceback.print_exc()
-        driver.quit()
         return jsonify({"status": "failed", "reason": "crawler error"}), 500
-
-    driver.quit()
-
-    return jsonify({"status": "success"})
 
 if __name__ == "__main__":
     import os
