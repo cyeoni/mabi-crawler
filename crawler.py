@@ -9,18 +9,33 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 def create_driver():
     options = Options()
-    options.add_argument("--headless=chrome")  # <-- 변경
+    options.add_argument("--headless=chrome")  # 탐지 우회를 위해 headless=new 대신 명시적 설정
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("window-size=1920,1080")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
 
+    caps = DesiredCapabilities.CHROME.copy()
+    caps["goog:loggingPrefs"] = {"performance": "ALL"}
+
     service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=service, options=options, desired_capabilities=caps)
+
+    # Selenium 탐지 우회 스크립트 삽입
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', {
+              get: () => undefined
+            })
+        """
+    })
+
     wait = WebDriverWait(driver, 20)
     return driver, wait
 
@@ -33,6 +48,7 @@ def open_page_with_retry(driver, url, wait, retries=3):
             return True
         except Exception as e:
             print(f"❌ 페이지 로딩 실패, 재시도 {attempt + 1}/{retries}: {e}")
+            print("🔎 현재 페이지 일부 내용:\n", driver.page_source[:500])  # 디버깅용 출력
             time.sleep(2)
     print("❌ 페이지 열기에 최종 실패")
     return False
@@ -145,4 +161,6 @@ if __name__ == "__main__":
     try:
         main(driver, wait)
     finally:
+        print("[update_power_data] 드라이버 종료 전")
         driver.quit()
+        print("[update_power_data] 드라이버 종료 완료")
