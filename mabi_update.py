@@ -33,22 +33,35 @@ def crawl_character_info(driver, wait, char_name):
             modal_close_btn.click()
             time.sleep(1.5)
     except Exception as e:
-        pass
+        print(f"  모달 처리 중 에러: {e}")
 
-    search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
-    search_input.clear()
-    search_input.send_keys(char_name)
-    search_button = driver.find_element(By.CSS_SELECTOR, "button[data-searchtype='search']")
-    search_button.click()
-    time.sleep(3)
+    try:
+        search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
+        search_input.clear()
+        search_input.send_keys(char_name)
+    except Exception as e:
+        print(f"  검색 입력창 처리 중 에러: {e}")
+        return None, None, None
+
+    try:
+        search_button = driver.find_element(By.CSS_SELECTOR, "button[data-searchtype='search']")
+        search_button.click()
+        time.sleep(3)
+    except Exception as e:
+        print(f"  검색 버튼 클릭 중 에러: {e}")
+        return None, None, None
 
     try:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")))
-    except:
-        print(f"  {char_name} 검색 결과 없음")
+    except Exception as e:
+        print(f"  {char_name} 검색 결과 없음 또는 로딩 실패: {e}")
         return None, None, None
 
-    items = driver.find_elements(By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
+    try:
+        items = driver.find_elements(By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
+    except Exception as e:
+        print(f"  검색 결과 아이템 추출 중 에러: {e}")
+        return None, None, None
 
     target_char = None
     for item in items:
@@ -57,7 +70,8 @@ def crawl_character_info(driver, wait, char_name):
             if name_elem.text.strip() == char_name:
                 target_char = item
                 break
-        except:
+        except Exception as e:
+            print(f"  아이템 내부 요소 탐색 중 에러: {e}")
             continue
 
     if not target_char:
@@ -66,12 +80,14 @@ def crawl_character_info(driver, wait, char_name):
 
     try:
         job = target_char.find_element(By.CSS_SELECTOR, "div:nth-child(4)").text.strip()
-    except:
+    except Exception as e:
+        print(f"  직업 정보 추출 중 에러: {e}")
         job = "(정보 없음)"
     try:
         power = target_char.find_element(By.CSS_SELECTOR, "div:nth-child(5)").text.strip()
         power_int = int(power.replace(',', ''))
-    except:
+    except Exception as e:
+        print(f"  전투력 정보 추출 중 에러: {e}")
         power = "0"
         power_int = 0
 
@@ -81,38 +97,54 @@ def crawl_character_info(driver, wait, char_name):
 def main():
     print("=== 스크립트 시작 ===")
     # ✅ Google 인증 - 환경변수에서 JSON 문자열 가져오기
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    json_creds = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
-    creds_dict = json.loads(json_creds)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    print("Google 인증 완료")
+    try:
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        json_creds = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
+        creds_dict = json.loads(json_creds)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        print("Google 인증 완료")
+    except Exception as e:
+        print(f"Google 인증 중 에러 발생: {e}")
+        return
 
-    # 문서 열기
-    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752")
-    worksheet = sheet.worksheet("전투력")
-    print("구글 시트 열기 완료")
+    try:
+        # 문서 열기
+        sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752")
+        worksheet = sheet.worksheet("전투력")
+        print("구글 시트 열기 완료")
+    except Exception as e:
+        print(f"구글 시트 열기 중 에러 발생: {e}")
+        return
 
-    # B열 캐릭터명 수집
-    char_names = worksheet.col_values(2)[1:]
-    char_names = [name.strip() for name in char_names if name.strip()]
-    seen = set()
-    unique_char_names = []
-    for name in char_names:
-        if name not in seen:
-            unique_char_names.append(name)
-            seen.add(name)
-    char_names = unique_char_names
-    print(f"캐릭터명 수집 완료: 총 {len(char_names)}개 캐릭터")
+    try:
+        # B열 캐릭터명 수집
+        char_names = worksheet.col_values(2)[1:]
+        char_names = [name.strip() for name in char_names if name.strip()]
+        seen = set()
+        unique_char_names = []
+        for name in char_names:
+            if name not in seen:
+                unique_char_names.append(name)
+                seen.add(name)
+        char_names = unique_char_names
+        print(f"캐릭터명 수집 완료: 총 {len(char_names)}개 캐릭터")
+    except Exception as e:
+        print(f"캐릭터명 수집 중 에러 발생: {e}")
+        return
 
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1920,1080")
-    driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 10)  # 이 부분 추가!
-    print("웹 드라이버 실행 완료")
+    try:
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--window-size=1920,1080")
+        driver = webdriver.Chrome(options=options)
+        wait = WebDriverWait(driver, 10)
+        print("웹 드라이버 실행 완료")
+    except Exception as e:
+        print(f"웹 드라이버 실행 중 에러 발생: {e}")
+        return
 
     url = "https://mabinogimobile.nexon.com/Ranking/List?t=1"
     if not open_page_with_retry(driver, url, wait):
@@ -120,15 +152,20 @@ def main():
         print("브라우저 종료")
         return
 
-    # 알리사 서버 선택
-    print("알리사 서버 선택 중...")
-    server_select_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_box")))
-    server_select_box.click()
-    time.sleep(0.5)
-    alisa_option = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_option li[data-serverid='4']")))
-    alisa_option.click()
-    print("알리사 서버 선택 완료")
-    time.sleep(2)
+    try:
+        # 알리사 서버 선택
+        print("알리사 서버 선택 중...")
+        server_select_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_box")))
+        server_select_box.click()
+        time.sleep(0.5)
+        alisa_option = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_option li[data-serverid='4']")))
+        alisa_option.click()
+        print("알리사 서버 선택 완료")
+        time.sleep(2)
+    except Exception as e:
+        print(f"서버 선택 중 에러 발생: {e}")
+        driver.quit()
+        return
 
     results = []
     for char_name in char_names:
@@ -141,27 +178,34 @@ def main():
     driver.quit()
     print("브라우저 종료 완료")
 
-    results.sort(key=lambda x: x[3], reverse=True)
-    print("결과 정렬 완료")
+    try:
+        results.sort(key=lambda x: x[3], reverse=True)
+        print("결과 정렬 완료")
+    except Exception as e:
+        print(f"결과 정렬 중 에러 발생: {e}")
 
-    data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
-    for i, (name, job, power, _) in enumerate(results, start=1):
-        data_to_update.append([i, name, job, power])
+    try:
+        data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
+        for i, (name, job, power, _) in enumerate(results, start=1):
+            data_to_update.append([i, name, job, power])
 
-    print(f"구글 시트 업데이트 시작 (총 {len(data_to_update)-1}개 데이터)")
-    worksheet.update('A1:D{}'.format(len(data_to_update)), data_to_update)
+        print(f"구글 시트 업데이트 시작 (총 {len(data_to_update)-1}개 데이터)")
+        worksheet.update('A1:D{}'.format(len(data_to_update)), data_to_update)
 
-    all_rows = len(worksheet.get_all_values())
-    rows_to_clear = all_rows - len(data_to_update)
-    if rows_to_clear > 0:
-        start_row = len(data_to_update) + 1
-        end_row = all_rows
-        clear_range = f"A{start_row}:D{end_row}"
-        empty_data = [[""] * 4] * rows_to_clear
-        worksheet.update(clear_range, empty_data)
-        print(f"잔여 데이터 {rows_to_clear}줄 삭제 완료")
+        all_rows = len(worksheet.get_all_values())
+        rows_to_clear = all_rows - len(data_to_update)
+        if rows_to_clear > 0:
+            start_row = len(data_to_update) + 1
+            end_row = all_rows
+            clear_range = f"A{start_row}:D{end_row}"
+            empty_data = [[""] * 4] * rows_to_clear
+            worksheet.update(clear_range, empty_data)
+            print(f"잔여 데이터 {rows_to_clear}줄 삭제 완료")
 
-    print("구글 시트 업데이트 및 잔여 데이터 삭제 완료!")
+        print("구글 시트 업데이트 및 잔여 데이터 삭제 완료!")
+    except Exception as e:
+        print(f"구글 시트 업데이트 중 에러 발생: {e}")
+
     print("=== 스크립트 종료 ===")
 
 if __name__ == "__main__":
