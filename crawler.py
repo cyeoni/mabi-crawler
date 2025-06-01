@@ -3,41 +3,34 @@ import json
 import time
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import undetected_chromedriver as uc
+
 
 def create_driver():
-    options = Options()
-    options.add_argument("--headless=new")
+    options = uc.ChromeOptions()
+    # headless 모드 필요 시 활성화 (캡챠 회피 위해선 비활성 권장)
+    # options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("window-size=1920,1080")
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     )
-    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    options.add_argument(f"user-agent={user_agent}")
 
-    service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
-
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": """
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        """
-    })
+    driver = uc.Chrome(options=options)
 
     wait = WebDriverWait(driver, 20)
     return driver, wait
 
-def open_page_with_retry(driver, url, wait, retries=1):
+
+def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(1, retries + 1):
         try:
             driver.get(url)
@@ -56,9 +49,14 @@ def open_page_with_retry(driver, url, wait, retries=1):
             bot_keywords = ["captcha", "verify", "bot", "blocked", "access denied", "authentication required"]
             if any(keyword in html for keyword in bot_keywords):
                 print("🚨 봇 탐지 또는 캡챠 페이지로 추정됩니다.")
+                time.sleep(5)
+                driver.refresh()
+                continue
+
             time.sleep(2)
     print("❌ 페이지 열기에 최종 실패")
     return False
+
 
 def crawl_character_info(driver, wait, char_name):
     try:
@@ -99,6 +97,7 @@ def crawl_character_info(driver, wait, char_name):
 
     print(f"{char_name} 캐릭터를 찾을 수 없습니다.")
     return None, None, None
+
 
 def main(driver, wait):
     print("크롤러 시작")
@@ -164,6 +163,7 @@ def main(driver, wait):
 
     print("✅ 구글 시트 업데이트 완료")
     print("크롤러 종료")
+
 
 if __name__ == "__main__":
     driver, wait = create_driver()
