@@ -4,11 +4,9 @@ import shutil
 import subprocess
 import undetected_chromedriver as uc
 from selenium.webdriver.support.ui import WebDriverWait
-from flask import Flask, request, jsonify
-import crawler  # 위 코드가 들어간 crawler.py 임포트
+import crawler  # crawler.py 임포트
 
 print = functools.partial(print, flush=True)
-app = Flask(__name__)
 
 def find_chrome_binary():
     candidates = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome"]
@@ -58,29 +56,17 @@ def launch_chrome():
         traceback.print_exc()
         return None, None
 
-@app.route("/update-power")
-def update_power():
-    print("API 호출 도착 /update-power")
-    if request.args.get("key") != "mabi123":
-        return jsonify({"error": "Invalid key"}), 403
-
+def main():
     check_chrome_version()
-
     driver, wait = launch_chrome()
     if not driver:
-        return jsonify({"status": "failed", "reason": "chrome launch failed"}), 500
+        print("chrome launch failed")
+        return
 
     try:
         crawler.main(driver, wait)
-    except Exception:
+    except Exception as e:
+        print("crawler error:", e)
+        traceback.print_exc()
+    finally:
         driver.quit()
-        return jsonify({"status": "failed", "reason": "crawler error"}), 500
-
-    driver.quit()
-
-    return jsonify({"status": "success"})
-
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
