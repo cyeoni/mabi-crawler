@@ -1,14 +1,12 @@
 from flask import Flask, jsonify
 from threading import Thread
-import time
-import sys
 import traceback
 
-import crawler  # 크롤러 코드가 있는 파일 이름을 여기로 바꾸세요 (예: crawler.py)
+import crawler  # crawler.py 모듈을 임포트
 
 app = Flask(__name__)
 
-# 백그라운드에서 크롤러 실행 상태 관리용
+# 크롤러 실행 상태 관리용 변수
 crawler_running = False
 crawler_last_result = None
 crawler_last_error = None
@@ -21,14 +19,13 @@ def run_crawler():
     crawler_last_result = None
     crawler_last_error = None
     try:
-        # 크롤러 함수 실행 (your_crawler_module.main 등)
-        driver, wait = your_crawler_module.create_driver()
+        driver, wait = crawler.create_driver()
         try:
-            your_crawler_module.main(driver, wait)
+            crawler.main(driver, wait)
             crawler_last_result = "크롤러 실행 성공"
         finally:
             driver.quit()
-    except Exception as e:
+    except Exception:
         crawler_last_error = traceback.format_exc()
     finally:
         crawler_running = False
