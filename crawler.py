@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 def create_driver():
     options = Options()
-    options.add_argument("--headless=new")
+    options.add_argument("--headless=chrome")  # <-- 변경
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("window-size=1920,1080")
@@ -28,13 +28,13 @@ def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
         try:
             driver.get(url)
-            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#mabinogim > div.ranking.container")))
+            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#mabinogim > div.ranking.container")))
             print("✅ 페이지 열림")
             return True
         except Exception as e:
-            print(f"페이지 로딩 실패, 재시도 {attempt+1}/{retries}: {e}")
+            print(f"❌ 페이지 로딩 실패, 재시도 {attempt + 1}/{retries}: {e}")
             time.sleep(2)
-    print("❌ 페이지 열기에 실패했습니다.")
+    print("❌ 페이지 열기에 최종 실패")
     return False
 
 def crawl_character_info(driver, wait, char_name):
