@@ -29,12 +29,13 @@ def create_driver():
     )
     options.add_argument(f"user-agent={user_agent}")
 
-    driver = uc.Chrome(options=options, driver_executable_path="/usr/local/bin/chromedriver")
+    # driver_executable_path 제거 (undetected_chromedriver가 알아서 처리)
+    driver = uc.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
     return driver, wait
 
 
-def open_page_with_retry(driver, url, wait, retries=3):
+def open_page_with_retry(driver, url, wait, retries=1):
     for attempt in range(1, retries + 1):
         try:
             driver.get(url)
