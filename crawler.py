@@ -11,8 +11,9 @@ import undetected_chromedriver as uc
 
 def create_driver():
     options = uc.ChromeOptions()
-    # headless 모드 필요 시 활성화 (캡챠 회피를 위해선 비활성 권장)
-    # options.add_argument("--headless=new")
+    headless = os.getenv("HEADLESS", "false").lower() == "true"
+    if headless:
+        options.add_argument("--headless=new")  # 필요 시 headless 모드 활성화
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
@@ -24,7 +25,11 @@ def create_driver():
     )
     options.add_argument(f"user-agent={user_agent}")
 
-    driver = uc.Chrome(options=options)
+    try:
+        driver = uc.Chrome(options=options)
+    except Exception as e:
+        print(f"❌ 드라이버 생성 실패: {e}")
+        raise
 
     wait = WebDriverWait(driver, 20)
     return driver, wait
@@ -41,7 +46,7 @@ def open_page_with_retry(driver, url, wait, retries=3):
             print("✅ 페이지 열림")
             return True
         except Exception as e:
-            print(f"❌ 페이지 로딩 실패, 재시도 {attempt}/{retries}: {e}")
+            print(f"❌ 페이지 로딩 실패, 재시도 {attempt}/{retries}: {type(e).__name__}: {e}")
 
             html = driver.page_source.lower()
             print("🔎 현재 페이지 일부 내용 (앞 500자):\n", html[:500])
@@ -66,8 +71,8 @@ def crawl_character_info(driver, wait, char_name):
             print("모달 팝업 발견 → 닫기 클릭")
             close_btn.click()
             time.sleep(1.5)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[crawl_character_info] 모달 팝업 처리 중 예외: {e}")
 
     search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
     search_input.clear()
@@ -107,15 +112,23 @@ def main(driver, wait):
     if not creds_json_str:
         raise RuntimeError("환경 변수 GOOGLE_APPLICATION_CREDENTIALS_JSON 가 설정되어 있지 않습니다.")
 
-    creds_dict = json.loads(creds_json_str)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    print("구글 시트 인증 완료")
+    try:
+        creds_dict = json.loads(creds_json_str)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        print("구글 시트 인증 완료")
+    except Exception as e:
+        print(f"❌ 구글 시트 인증 실패: {e}")
+        return
 
-    sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752"
-    )
-    worksheet = sheet.worksheet("전투력")
+    try:
+        sheet = client.open_by_url(
+            "https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752"
+        )
+        worksheet = sheet.worksheet("전투력")
+    except Exception as e:
+        print(f"❌ 구글 시트 열기 실패: {e}")
+        return
 
     char_names = worksheet.col_values(2)[1:]
     char_names = list(dict.fromkeys(name.strip() for name in char_names if name.strip()))
@@ -166,9 +179,16 @@ def main(driver, wait):
 
 
 if __name__ == "__main__":
-    driver, wait = create_driver()
+    try:
+        driver, wait = create_driver()
+    except Exception as e:
+        print("[main] 드라이버 생성 실패, 프로그램 종료")
+        exit(1)
+
     try:
         main(driver, wait)
+    except Exception as e:
+        print(f"[main] 크롤러 실행 중 예외 발생: {e}")
     finally:
         print("[update_power_data] 드라이버 종료 전")
         driver.quit()
