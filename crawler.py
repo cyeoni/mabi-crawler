@@ -21,8 +21,6 @@ def create_driver():
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     )
-
-    # capabilities 대신 옵션에 설정
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
     service = Service()
@@ -40,14 +38,17 @@ def create_driver():
     return driver, wait
 
 def open_page_with_retry(driver, url, wait, retries=3):
-    for attempt in range(retries):
+    for attempt in range(1, retries + 1):
         try:
             driver.get(url)
-            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#mabinogimobile > div.ranking.container, #mabinogimobile > div.ranking")))
+            wait.until(EC.visibility_of_element_located((
+                By.CSS_SELECTOR,
+                "#mabinogimobile > div.ranking.container, #mabinogimobile > div.ranking"
+            )))
             print("✅ 페이지 열림")
             return True
         except Exception as e:
-            print(f"❌ 페이지 로딩 실패, 재시도 {attempt + 1}/{retries}: {e}")
+            print(f"❌ 페이지 로딩 실패, 재시도 {attempt}/{retries}: {e}")
 
             html = driver.page_source.lower()
             print("🔎 현재 페이지 일부 내용 (앞 500자):\n", html[:500])
@@ -67,7 +68,7 @@ def crawl_character_info(driver, wait, char_name):
             print("모달 팝업 발견 → 닫기 클릭")
             close_btn.click()
             time.sleep(1.5)
-    except:
+    except Exception:
         pass
 
     search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
@@ -80,7 +81,7 @@ def crawl_character_info(driver, wait, char_name):
 
     try:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")))
-    except:
+    except Exception:
         print(f"{char_name} 검색 결과 없음")
         return None, None, None
 
@@ -93,7 +94,7 @@ def crawl_character_info(driver, wait, char_name):
                 power = item.find_element(By.CSS_SELECTOR, "div:nth-child(5)").text.strip()
                 power_int = int(power.replace(',', ''))
                 return job, power, power_int
-        except:
+        except Exception:
             continue
 
     print(f"{char_name} 캐릭터를 찾을 수 없습니다.")
@@ -112,7 +113,9 @@ def main(driver, wait):
     client = gspread.authorize(creds)
     print("구글 시트 인증 완료")
 
-    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752")
+    sheet = client.open_by_url(
+        "https://docs.google.com/spreadsheets/d/19Ti_Sq75WpdE3vKGtxupCCCnBmzNXmRv_fafkD0X_Bo/edit#gid=1776704752"
+    )
     worksheet = sheet.worksheet("전투력")
 
     char_names = worksheet.col_values(2)[1:]
