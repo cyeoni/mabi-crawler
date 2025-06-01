@@ -9,38 +9,40 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 def create_driver():
     options = Options()
-    # 최신 크롬에서 권장하는 헤드리스 옵션으로 변경
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("window-size=1920,1080")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.55 Safari/537.36"
+    )
 
-    caps = DesiredCapabilities.CHROME.copy()
-    caps["goog:loggingPrefs"] = {"performance": "ALL"}
+    # performance 로그 캡처 설정
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
     service = Service()
-    driver = webdriver.Chrome(service=service, options=options, desired_capabilities=caps)
+    driver = webdriver.Chrome(service=service, options=options)
 
-    # Selenium 탐지 우회 스크립트 삽입 (webdriver 삭제 외 추가 탐지 우회 포함)
+    # Selenium 탐지 우회 스크립트 삽입
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
         "source": """
-            Object.defineProperty(navigator, 'webdriver', {
-              get: () => undefined
-            });
-            // plugins 탐지 우회
-            Object.defineProperty(navigator, 'plugins', {
-              get: () => [1, 2, 3, 4, 5]
-            });
-            // languages 탐지 우회
-            Object.defineProperty(navigator, 'languages', {
-              get: () => ['en-US', 'en']
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            window.navigator.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            Object.defineProperty(navigator, 'permissions', {
+                get: () => ({
+                    query: (parameters) => (
+                        parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        Promise.resolve({ state: 'denied' })
+                    )
+                })
             });
         """
     })
@@ -52,17 +54,17 @@ def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
         try:
             driver.get(url)
-            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#mabinogimobile > div.ranking.container, #mabinogimobile > div.ranking")))
+            wait.until(EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, "#mabinogimobile > div.ranking.container, #mabinogimobile > div.ranking")
+            ))
             print("✅ 페이지 열림")
             return True
         except Exception as e:
             print(f"❌ 페이지 로딩 실패, 재시도 {attempt + 1}/{retries}: {e}")
 
             html = driver.page_source.lower()
-            # 디버깅용 페이지 앞부분 출력 (500자)
             print("🔎 현재 페이지 일부 내용 (앞 500자):\n", html[:500])
 
-            # 봇 탐지/캡챠 의심 키워드 체크
             bot_keywords = ["captcha", "verify", "bot", "blocked", "access denied", "authentication required"]
             if any(keyword in html for keyword in bot_keywords):
                 print("🚨 봇 탐지 또는 캡챠 페이지로 추정됩니다.")
