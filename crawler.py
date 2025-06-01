@@ -23,12 +23,7 @@ def create_driver():
     )
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
-    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
-    if chromedriver_path:
-        service = Service(executable_path=chromedriver_path)
-    else:
-        service = Service()
-
+    service = Service()
     driver = webdriver.Chrome(service=service, options=options)
 
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
