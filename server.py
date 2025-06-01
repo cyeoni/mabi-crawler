@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request
 from threading import Thread
-import requests
+from mabi_update import update_power_data  # 크롤링 함수 직접 호출
 
 app = Flask(__name__)
 
@@ -16,13 +16,13 @@ def update_power():
 
     def run_update():
         try:
-            res = requests.get("http://localhost:8080/update-power?key=mabi123")
-            print(f"크롤링 트리거 요청 응답: {res.status_code} {res.text}")
+            update_power_data()
+            print("✅ 크롤링 완료")
         except Exception as e:
-            print("크롤링 트리거 실패:", e)
+            print("❌ 크롤링 실패:", e)
 
     Thread(target=run_update).start()
-    return "✅ 크롤링 요청 보냄", 200
+    return "✅ 크롤링 실행 시작", 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
