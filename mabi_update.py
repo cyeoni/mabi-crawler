@@ -105,6 +105,8 @@ def main():
     options.add_argument("--window-size=1920,1080")
     driver = webdriver.Chrome(options=options)
 
+    wait = WebDriverWait(driver, 10)  # 이 부분 추가!
+
     url = "https://mabinogimobile.nexon.com/Ranking/List?t=1"
     if not open_page_with_retry(driver, url, wait):
         driver.quit()
