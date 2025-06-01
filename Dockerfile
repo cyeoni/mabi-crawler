@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y \
     xdg-utils chromium chromium-driver \
     python3-distutils
 
+RUN python3 -m ensurepip --upgrade
+
 WORKDIR /app
 
 COPY requirements.txt .
