@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request
 from threading import Thread
 import mabi_update  # 크롤링 코드 불러오기
@@ -16,4 +17,5 @@ def update_power():
     return "크롤링 시작됨!", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))  # Railway가 주는 포트 환경변수 사용
+    app.run(host="0.0.0.0", port=port)
