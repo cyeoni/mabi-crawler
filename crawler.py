@@ -12,19 +12,16 @@ from selenium.webdriver.support import expected_conditions as EC
 
 def create_driver():
     options = Options()
-    options.add_argument("--headless=new")  # 최신 헤드리스 모드
-    options.add_argument("--no-sandbox")  # 리눅스 서버 권한 문제 방지
-    options.add_argument("--disable-dev-shm-usage")  # 공유 메모리 문제 방지
-    options.add_argument("--disable-gpu")  # GPU 비활성화
-    options.add_argument("--disable-features=VizDisplayCompositor")  # 헤드리스 렌더링 문제 완화
-    options.add_argument("window-size=1920,1080")  # 창 크기 고정
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("window-size=1920,1080")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
 
-    # 크롬드라이버 경로가 다르면 Service("/path/to/chromedriver")처럼 지정하세요
     service = Service()
     driver = webdriver.Chrome(service=service, options=options)
-    wait = WebDriverWait(driver, 20)  # 최대 20초 대기
+    wait = WebDriverWait(driver, 20)
     return driver, wait
 
 def open_page_with_retry(driver, url, wait, retries=3):
@@ -36,9 +33,6 @@ def open_page_with_retry(driver, url, wait, retries=3):
             return True
         except Exception as e:
             print(f"페이지 로딩 실패, 재시도 {attempt+1}/{retries}: {e}")
-            screenshot_path = f"screenshot_fail_{attempt+1}.png"
-            driver.save_screenshot(screenshot_path)
-            print(f"스크린샷 저장: {screenshot_path}")
             time.sleep(2)
     print("❌ 페이지 열기에 실패했습니다.")
     return False
@@ -69,7 +63,6 @@ def crawl_character_info(driver, wait, char_name):
         return None, None, None
 
     items = driver.find_elements(By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
-
     for item in items:
         try:
             name_elem = item.find_element(By.CSS_SELECTOR, "div:nth-child(3)")
