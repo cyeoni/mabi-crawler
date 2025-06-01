@@ -1,3 +1,64 @@
+from oauth2client.service_account import ServiceAccountCredentials
+import gspread
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+
+def open_page_with_retry(driver, url, wait, retries=3):
+    for attempt in range(retries):
+        try:
+            driver.get(url)
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#mabinogim > div.ranking.container")))
+            print("✅ 페이지 열림")
+            return True
+        except Exception as e:
+            print(f"페이지 로딩 실패, 재시도 {attempt+1}/{retries}: {e}")
+            time.sleep(2)
+    print("❌ 페이지 열기에 실패했습니다.")
+    return False
+
+def crawl_character_info(driver, wait, char_name):
+    try:
+        modal = driver.find_element(By.CSS_SELECTOR, "body > div.modal.alert_modal")
+        if modal.is_displayed():
+            close_btn = modal.find_element(By.CSS_SELECTOR, "div.button_area > button")
+            print("모달 팝업 발견 → 닫기 클릭")
+            close_btn.click()
+            time.sleep(1.5)
+    except:
+        pass
+
+    search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
+    search_input.clear()
+    search_input.send_keys(char_name)
+
+    search_button = driver.find_element(By.CSS_SELECTOR, "button[data-searchtype='search']")
+    search_button.click()
+    time.sleep(3)
+
+    try:
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")))
+    except:
+        print(f"{char_name} 검색 결과 없음")
+        return None, None, None
+
+    items = driver.find_elements(By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")
+
+    for item in items:
+        try:
+            name_elem = item.find_element(By.CSS_SELECTOR, "div:nth-child(3)")
+            if name_elem.text.strip() == char_name:
+                job = item.find_element(By.CSS_SELECTOR, "div:nth-child(4)").text.strip()
+                power = item.find_element(By.CSS_SELECTOR, "div:nth-child(5)").text.strip()
+                power_int = int(power.replace(',', ''))
+                return job, power, power_int
+        except:
+            continue
+
+    print(f"{char_name} 캐릭터를 찾을 수 없습니다.")
+    return None, None, None
+
 def main(driver, wait):
     print("크롤러 시작")
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
