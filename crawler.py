@@ -19,31 +19,20 @@ def create_driver():
     options.add_argument("window-size=1920,1080")
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.55 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     )
 
-    # performance 로그 캡처 설정
+    # capabilities 대신 옵션에 설정
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
     service = Service()
     driver = webdriver.Chrome(service=service, options=options)
 
-    # Selenium 탐지 우회 스크립트 삽입
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
         "source": """
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            window.navigator.chrome = { runtime: {} };
             Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-            Object.defineProperty(navigator, 'permissions', {
-                get: () => ({
-                    query: (parameters) => (
-                        parameters.name === 'notifications' ?
-                        Promise.resolve({ state: Notification.permission }) :
-                        Promise.resolve({ state: 'denied' })
-                    )
-                })
-            });
         """
     })
 
@@ -54,9 +43,7 @@ def open_page_with_retry(driver, url, wait, retries=3):
     for attempt in range(retries):
         try:
             driver.get(url)
-            wait.until(EC.visibility_of_element_located(
-                (By.CSS_SELECTOR, "#mabinogimobile > div.ranking.container, #mabinogimobile > div.ranking")
-            ))
+            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#mabinogimobile > div.ranking.container, #mabinogimobile > div.ranking")))
             print("✅ 페이지 열림")
             return True
         except Exception as e:
