@@ -11,8 +11,10 @@ import undetected_chromedriver as uc
 
 def create_driver():
     options = uc.ChromeOptions()
-    # 필요시 헤드리스 모드 활성화
-    # options.add_argument("--headless=new")
+
+    # 서버 환경이라면 헤드리스 모드 기본 활성화 권장
+    options.add_argument("--headless=new")
+
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
@@ -21,7 +23,11 @@ def create_driver():
     options.add_argument("--single-process")
     options.add_argument("window-size=1920,1080")
 
-    options.binary_location = os.getenv("CHROME_PATH", "/usr/bin/google-chrome")
+    chrome_path = os.getenv("CHROME_PATH", "/usr/bin/google-chrome")
+    if not os.path.exists(chrome_path):
+        print(f"⚠️ Chrome 바이너리 경로가 존재하지 않습니다: {chrome_path}")
+
+    options.binary_location = chrome_path
 
     user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -29,13 +35,12 @@ def create_driver():
     )
     options.add_argument(f"user-agent={user_agent}")
 
-    # driver_executable_path 제거 (undetected_chromedriver가 알아서 처리)
     driver = uc.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
     return driver, wait
 
 
-def open_page_with_retry(driver, url, wait, retries=1):
+def open_page_with_retry(driver, url, wait, retries=3):  # 기본 재시도 3회로 수정
     for attempt in range(1, retries + 1):
         try:
             driver.get(url)
@@ -75,15 +80,14 @@ def crawl_character_info(driver, wait, char_name):
         # 모달 없으면 무시
         pass
 
-    # 검색창에 이름 입력 후 검색
     search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='search']")))
     search_input.clear()
     search_input.send_keys(char_name)
 
     search_button = driver.find_element(By.CSS_SELECTOR, "button[data-searchtype='search']")
     search_button.click()
-    time.sleep(3)
 
+    # 검색 후 결과 로딩 대기: 기존 time.sleep(3) 대신 명시적 대기 사용
     try:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section.ranking_list_wrap div.list_area ul > li")))
     except Exception:
@@ -109,10 +113,8 @@ def crawl_character_info(driver, wait, char_name):
 def main(driver, wait):
     print("크롤러 시작")
 
-    # 구글 API 범위 설정
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
-    # 환경변수에서 인증 JSON 문자열 불러오기
     creds_json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     if not creds_json_str:
         raise RuntimeError("환경 변수 GOOGLE_APPLICATION_CREDENTIALS_JSON 가 설정되어 있지 않습니다.")
@@ -127,9 +129,7 @@ def main(driver, wait):
     )
     worksheet = sheet.worksheet("전투력")
 
-    # 2열(캐릭터명) 전체 가져오기 (헤더 제외)
     char_names = worksheet.col_values(2)[1:]
-    # 중복 제거 및 공백 제거
     char_names = list(dict.fromkeys(name.strip() for name in char_names if name.strip()))
     print(f"캐릭터 이름 총 {len(char_names)}개 읽음")
 
@@ -138,7 +138,6 @@ def main(driver, wait):
         print("페이지 열기 실패로 크롤러 종료")
         return
 
-    # 서버 선택 (알리사 서버 - 서버ID: 4)
     try:
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".select_server .select_box"))).click()
         time.sleep(0.5)
@@ -159,7 +158,6 @@ def main(driver, wait):
         print(f"✅ {char_name} 조회 완료: 직업={job}, 전투력={power}")
         results.append((char_name, job, power, power_int))
 
-    # 전투력 순 내림차순 정렬
     results.sort(key=lambda x: x[3], reverse=True)
 
     data_to_update = [["랭킹", "캐릭터명", "직업", "전투력"]]
@@ -167,14 +165,16 @@ def main(driver, wait):
         data_to_update.append([i, name, job, power])
 
     print("구글 시트 업데이트 시작")
-    worksheet.update(f'A1:D{len(data_to_update)}', data_to_update)
-
-    # 기존 데이터 중 남는 행 초기화
-    all_rows = len(worksheet.get_all_values())
-    leftover = all_rows - len(data_to_update)
-    if leftover > 0:
-        clear_range = f"A{len(data_to_update)+1}:D{all_rows}"
-        worksheet.update(clear_range, [[""] * 4] * leftover)
+    try:
+        worksheet.update(f'A1:D{len(data_to_update)}', data_to_update)
+        # 기존 데이터 중 남는 행 초기화
+        all_rows = len(worksheet.get_all_values())
+        leftover = all_rows - len(data_to_update)
+        if leftover > 0:
+            clear_range = f"A{len(data_to_update)+1}:D{all_rows}"
+            worksheet.update(clear_range, [[""] * 4] * leftover)
+    except Exception as e:
+        print(f"❌ 구글 시트 업데이트 중 오류 발생: {e}")
 
     print("✅ 구글 시트 업데이트 완료")
     print("크롤러 종료")
