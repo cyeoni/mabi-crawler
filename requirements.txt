@@ -1,4 +1,5 @@
 flask
-selenium
 gspread
 oauth2client
+selenium
+undetected-chromedriver
