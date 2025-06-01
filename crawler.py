@@ -37,7 +37,7 @@ def create_driver():
     wait = WebDriverWait(driver, 20)
     return driver, wait
 
-def open_page_with_retry(driver, url, wait, retries=3):
+def open_page_with_retry(driver, url, wait, retries=1):
     for attempt in range(1, retries + 1):
         try:
             driver.get(url)
